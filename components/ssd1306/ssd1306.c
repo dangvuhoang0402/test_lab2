@@ -110,7 +110,7 @@ void task_ssd1306_display_text(const void *arg_text) {
 	vTaskDelete(NULL);
 }
 
-void task_ssd1306_display_clear(void *ignore) {
+void task_ssd1306_display_clear() {
 	i2c_cmd_handle_t cmd;
 
 	uint8_t clear[128];
@@ -133,3 +133,92 @@ void task_ssd1306_display_clear(void *ignore) {
 
 	vTaskDelete(NULL);
 }
+
+void ssd1306_display_image(Screen_t * dev, int page, int seg, uint8_t * images, int width) 
+{
+	i2c_cmd_handle_t cmd;
+
+	uint8_t columLow = seg & 0x0F;
+	uint8_t columHigh = (seg >> 4) & 0x0F;
+
+	cmd = i2c_cmd_link_create();
+	i2c_master_start(cmd);
+	i2c_master_write_byte(cmd, (OLED_I2C_ADDRESS << 1) | I2C_MASTER_WRITE, true);
+
+	i2c_master_write_byte(cmd, OLED_CONTROL_BYTE_CMD_STREAM, true);
+	// Set Lower Column Start Address for Page Addressing Mode
+	i2c_master_write_byte(cmd, (0x00 + columLow), true);
+	// Set Higher Column Start Address for Page Addressing Mode
+	i2c_master_write_byte(cmd, (0x10 + columHigh), true);
+	// Set Page Start Address for Page Addressing Mode
+	i2c_master_write_byte(cmd, 0xB0 | page, true);
+
+	i2c_master_stop(cmd);
+	i2c_master_cmd_begin(I2C_NUM_0, cmd, 10/portTICK_PERIOD_MS);
+	i2c_cmd_link_delete(cmd);
+
+	cmd = i2c_cmd_link_create();
+	i2c_master_start(cmd);
+	i2c_master_write_byte(cmd, (OLED_I2C_ADDRESS << 1) | I2C_MASTER_WRITE, true);
+
+	i2c_master_write_byte(cmd, OLED_CONTROL_BYTE_DATA_STREAM, true);
+	i2c_master_write(cmd, images, width, true);
+
+	i2c_master_stop(cmd);
+	i2c_master_cmd_begin(I2C_NUM_0, cmd, 10/portTICK_PERIOD_MS);
+	i2c_cmd_link_delete(cmd);
+}
+
+uint8_t ssd1306_copy_bit(uint8_t src, int srcBits, uint8_t dst, int dstBits)
+{
+	uint8_t smask = 0x01 << srcBits;
+	uint8_t dmask = 0x01 << dstBits;
+	uint8_t _src = src & smask;
+
+	uint8_t _dst;
+	if (_src != 0) {
+		_dst = dst | dmask; // set bit
+	} else {
+		_dst = dst & ~(dmask); // clear bit
+	}
+	return _dst;
+}
+
+void ssd1306_bitmap_picture(Screen_t * screen, uint8_t * image)
+{
+	uint8_t wk0, wk1, wk2;
+	uint8_t page = 0;
+	uint8_t seg = 0;
+	uint8_t dstBits = 0;
+	int offset = 0;
+	for(int _height = 0; _height < 64; _height++) {
+		for (int index = 0; index < 16; index++) {
+			for (int srcBits = 7; srcBits >= 0; srcBits--) {
+				wk0 = screen->_page[page]._segs[seg];
+
+				wk1 = image[index+offset];
+
+				wk2 = ssd1306_copy_bit(wk1, srcBits, wk0, dstBits);
+
+				screen->_page[page]._segs[seg] = wk2;
+				
+				seg++;
+			}
+		}
+		vTaskDelay(1);
+		offset = offset + 16;
+		dstBits++;
+		seg = 0;
+		if (dstBits == 8) {
+			page++;
+			dstBits=0;
+		}
+	}
+}
+void ssd1306_display_picture(Screen_t * screen)
+{
+	for (int page = 0; page < 8; page++) {
+			ssd1306_display_image(screen, page, 0, screen->_page[page]._segs, 128);
+	}
+}
+

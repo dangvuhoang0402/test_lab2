@@ -43,10 +43,21 @@
 // Charge Pump (pg.62)
 #define OLED_CMD_SET_CHARGE_PUMP        0x8D    // follow with 0x14
 
+typedef struct {
+	uint8_t _segs[128];
+} PAGE_t;
+
+typedef struct {
+	PAGE_t _page[8];
+} Screen_t;
+
 #endif /* MAIN_SSD1366_H_ */
 
 void ssd1306_init();
 void task_ssd1306_display_text(const void *arg_text);
-void task_ssd1306_display_clear(void *ignore);
+void task_ssd1306_display_clear();
 void i2c_master_init();
-
+void ssd1306_bitmap_picture(Screen_t *, uint8_t *);
+void ssd1306_display_picture(Screen_t *);
+void ssd1306_display_image(Screen_t * , int , int , uint8_t * , int );
+uint8_t ssd1306_copy_bit(uint8_t , int , uint8_t , int );
